@@ -4,9 +4,15 @@
 
 set -e
 
+# 尝试开启 BBR（fq + bbr）。容器里可能没权限改内核参数，失败也不影响启动。
+sysctl -w net.core.default_qdisc=fq 2>/dev/null || true
+sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null || true
+
 # 平台健康检查：3000 端口（或 $PORT）要能访问
 mkdir -p /app/www
 echo ok > /app/www/index.html
+# 把当前拥塞算法写出来，方便从公网确认 BBR 是否生效
+cat /proc/sys/net/ipv4/tcp_congestion_control > /app/www/bbr.txt 2>/dev/null || echo unavailable > /app/www/bbr.txt
 cd /app/www
 python3 -m http.server "${PORT:-3000}" >/app/http.log 2>&1 &
 cd /app
