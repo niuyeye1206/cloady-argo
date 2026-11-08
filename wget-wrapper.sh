@@ -1,6 +1,8 @@
 #!/bin/sh
-# wget 包装：容器里 wget 下 raw.githubusercontent.com 会无限挂住（没超时）。
-# 先用带超时的 wget 试，失败就用 curl 兜底（curl 在容器里实测是通的）。
+# 容器里 wget 下 raw.githubusercontent.com 会无限挂住，
+# 连 --timeout=25 --tries=2 都救不了（疑似卡在 DNS，超时不生效），
+# 但 curl 同一地址 1.7 秒就能下完。所以带 -O 的下载直接改用 curl，
+# 不再走 wget；其他 wget 调用用 timeout 强制兜底，避免无限挂住。
 out=""
 url=""
 prev=""
@@ -11,18 +13,7 @@ for a in "$@"; do
   prev="$a"
   url="$a"
 done
-REAL_WGET=/usr/bin/wget
-if [ ! -x "$REAL_WGET" ]; then
-  REAL_WGET=""
-  for p in /usr/bin /bin /usr/sbin /sbin; do
-    if [ -x "$p/wget" ]; then REAL_WGET="$p/wget"; break; fi
-  done
-fi
-if [ -n "$REAL_WGET" ] && "$REAL_WGET" --timeout=25 --tries=2 --waitretry=2 "$@"; then
-  exit 0
-fi
 if [ -n "$out" ] && [ -n "$url" ]; then
-  curl -fsSL --retry 2 --max-time 60 -o "$out" "$url"
-  exit $?
+  exec curl -fsSL --retry 2 --max-time 60 -o "$out" "$url"
 fi
-exit 1
+exec timeout 30 /usr/bin/wget --timeout=25 --tries=1 "$@"
