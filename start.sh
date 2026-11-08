@@ -1,18 +1,27 @@
-#!/bin/bash
-# Cloady 容器启动脚本：健康检查 HTTP 服务 + 跑 ali.sh
+#!/bin/sh
+# 不用 ali.sh，直接跑 xray + cloudflared。
+# 环境变量：UUID、ARGO_AUTH、PORT（平台健康检查端口）。
+
 set -e
 
-# Cloady 要求 web 服务在端口上接受连接，不然部署判失败。
-# 用一个极简 HTTP 服务占住 $PORT（默认 3000），只做健康检查用。
-PORT="${PORT:-3000}"
+# 平台健康检查：3000 端口（或 $PORT）要能访问
 mkdir -p /app/www
-echo "ok" > /app/www/index.html
-python3 -m http.server "$PORT" --bind 0.0.0.0 --directory /app/www &
+echo ok > /app/www/index.html
+cd /app/www
+python3 -m http.server "${PORT:-3000}" >/app/http.log 2>&1 &
+cd /app
 
-# 跑 ali.sh（强制 Python 版），隧道信息全从环境变量来。
-# 必填：ARGO_DOMAIN、ARGO_AUTH；建议固定：UUID；端口固定 8001。
-export ARGO_PORT=8001
-bash /app/ali.sh -py
+# 生成 xray 配置（三个协议分三个端口：VLESS 8001、VMess 8002、Trojan 8003，
+# 隧道按路径分流到对应端口）
+UUID="${UUID:?UUID env var is required}"
+sed -e "s/__UUID__/$UUID/g" /app/xray-config.json > /app/config.json
 
-# ali.sh 把 xray / cloudflared 挂到 screen 后台就退出了，这里守住容器不退出。
+# 启动 xray
+/app/xray run -config /app/config.json >/app/xray.log 2>&1 &
+
+# 启动 cloudflared 隧道（ingress 已在 Cloudflare 侧按路径配好：
+# /vless-argo->8001、/vmess-argo->8002、/trojan-argo->8003）
+/app/cloudflared tunnel --no-autoupdate run --token "${ARGO_AUTH:?ARGO_AUTH env var is required}" >/app/cloudflared.log 2>&1 &
+
+echo "xray + cloudflared started"
 tail -f /dev/null

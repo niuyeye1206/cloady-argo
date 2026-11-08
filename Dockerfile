@@ -1,20 +1,24 @@
 FROM debian:12-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl python3 python3-venv screen ca-certificates procps \
+    curl python3 ca-certificates unzip procps \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# 下载 ali.sh（你给的那个脚本）
-RUN curl -Ls https://main.ssss.nyc.mn/ali.sh -o /app/ali.sh && chmod +x /app/ali.sh
+# xray：直接用官方 release，不走 ali.sh
+RUN curl -fsSL https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip -o /tmp/xray.zip \
+ && unzip -o -q /tmp/xray.zip -d /tmp/xray \
+ && mv /tmp/xray/xray /app/xray \
+ && chmod +x /app/xray \
+ && rm -rf /tmp/xray.zip /tmp/xray
 
+# cloudflared：直接用官方 release
+RUN curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /app/cloudflared \
+ && chmod +x /app/cloudflared
+
+COPY xray-config.json /app/xray-config.json
 COPY start.sh /app/start.sh
 RUN chmod +x /app/start.sh
-
-# wget 包装：ali.sh 用 wget 下文件时没超时，容器里会无限挂住。
-# 把带超时+重试（失败用 curl 兜底）的包装放到 PATH 最前面，让 wget 先走它。
-COPY wget-wrapper.sh /usr/local/bin/wget
-RUN chmod +x /usr/local/bin/wget
 
 CMD ["/app/start.sh"]
