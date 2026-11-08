@@ -12,4 +12,9 @@ RUN curl -Ls https://main.ssss.nyc.mn/ali.sh -o /app/ali.sh && chmod +x /app/ali
 COPY start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
+# wget 包装：ali.sh 用 wget 下文件时没超时，容器里会无限挂住。
+# 把带超时+重试（失败用 curl 兜底）的包装放到 PATH 最前面，让 wget 先走它。
+COPY wget-wrapper.sh /usr/local/bin/wget
+RUN chmod +x /usr/local/bin/wget
+
 CMD ["/app/start.sh"]
